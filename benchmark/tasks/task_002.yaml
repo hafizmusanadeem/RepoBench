@@ -31,12 +31,30 @@ setup:
   # Same principle as task_001: this file has no VCR/cassette dependency
   # for the new tests (docstring literally says "Not a VCR test"), so a
   # minimal install is enough.
+  #
+  # "pyparsing<3.1" is required for the same reason noted in task_001.yaml —
+  # verified empirically: without the pin, test collection fails with a
+  # PyparsingDeprecationWarning-as-error from the vcr/httplib2 import chain,
+  # unrelated to the actual bug.
   command: |
     pip install -e ./pydantic_graph -e "./pydantic_ai_slim" \
       pytest anyio inline-snapshot dirty-equals httpx asgi-lifespan \
-      pytest-mock pytest-recording devtools
+      pytest-mock pytest-recording devtools "pyparsing<3.1"
   env:
     BLOCKBUSTER_ENABLED: "false"
+
+# Unified diff (tests/test_tools.py only) that adds the imports and the
+# three new test functions from the gold PR. Applied by the scorer only,
+# after the agent submits. Path is relative to this file.
+#
+# Verified end-to-end against the real repo:
+#   - `git apply --check` succeeds cleanly at base_commit.
+#   - Before any fix: all 3 fail_to_pass tests genuinely fail
+#     ("DID NOT RAISE UserError" / "DID NOT RAISE ValidationError").
+#   - After applying the real upstream fix: all 3 pass, and the full file
+#     is 161 passed, 1 skipped -- exactly matching the pass_to_pass note
+#     below.
+test_patch: patches/task_002.test.patch
 
 tests:
   fail_to_pass:

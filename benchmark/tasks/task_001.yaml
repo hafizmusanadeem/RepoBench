@@ -28,12 +28,27 @@ setup:
   # boto3-stubs, tavily, exa, duckduckgo-search, fastmcp, etc. that this
   # test file never imports. Install only the local workspace package plus
   # what tests/conftest.py actually imports.
+  #
+  # "pyparsing<3.1" is required: unpinned pyparsing>=3.1 pulls a
+  # setName-deprecation warning through vcrpy -> httplib2, which trips
+  # pydantic-ai's own filterwarnings=["error"] pytest policy and breaks test
+  # collection with an unrelated error. Verified empirically (see
+  # sandbox/pydantic-ai/Dockerfile comment).
   command: |
     pip install -e ./pydantic_graph -e "./pydantic_ai_slim[realtime]" \
       pytest anyio inline-snapshot dirty-equals httpx asgi-lifespan \
-      pytest-mock pytest-recording devtools
+      pytest-mock pytest-recording devtools "pyparsing<3.1"
   env:
     BLOCKBUSTER_ENABLED: "false"   # blockbuster isn't in the dev deps above; disable rather than pull it in
+
+# Unified diff (tests/realtime/test_session.py only) that adds the two new
+# test functions from the gold PR. Applied by the scorer only, after the
+# agent submits -- never copied into the sandbox during the episode. Path is
+# relative to this file. Verified to `git apply --check` cleanly against
+# base_commit, and to fail before the fix / pass after it (see the sibling
+# patches/task_002.test.patch verification notes -- same process was run for
+# this task).
+test_patch: patches/task_001.test.patch
 
 tests:
   fail_to_pass:
@@ -42,8 +57,8 @@ tests:
   # NOTE: the PR's diff added TWO new test functions, but only one of them
   # is actually F2P. `test_send_audio_bad_later_chunk_keeps_earlier_chunks`
   # already passes on base_commit (it pins existing correct behavior for a
-  # different code path). Verified empirically — see validate_task.sh.
-  # Treat it as P2P, not F2P.
+  # different code path). Verified empirically: 1 passed with no fix and no
+  # test_patch changes applied to it.
   pass_to_pass:
     - "tests/realtime/test_session.py::test_send_audio_bad_later_chunk_keeps_earlier_chunks"
     - "tests/realtime/test_session.py"   # full file, 295 tests, must stay green

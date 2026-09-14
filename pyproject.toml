@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "inspect-ai>=0.3.263",
-    "inspect-swe>=0.2.70",
     "pydantic>=2.13.5",
     "pyyaml>=6.0.3",
 ]

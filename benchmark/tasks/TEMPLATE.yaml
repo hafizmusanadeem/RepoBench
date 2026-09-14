@@ -1,0 +1,60 @@
+# Copy this file to task_00N.yaml and fill it in to add a new benchmark
+# task. Delete every comment line before committing if you like -- they're
+# only here to explain each field.
+#
+# NOTE ON test_patch / fail_to_pass:
+# If your fail_to_pass tests are new tests added by the real fix (the usual
+# case for a bug-fix task -- see task_001.yaml/task_002.yaml), those tests
+# do NOT exist at base_commit, so the agent cannot run them and the scorer
+# cannot run them either without first adding them. You must supply a
+# `test_patch`: a unified diff, touching test files only, that adds those
+# tests. Get it with the exact bytes from the real commit rather than
+# retyping it (retyping risks silent indentation/whitespace drift that
+# breaks `git apply`), e.g.:
+#   curl -sL https://github.com/<org>/<repo>/commit/<sha>.diff -o full.diff
+# then split out just the hunks for files under tests/ into
+# benchmark/tasks/patches/task_00N.test.patch. Verify it with:
+#   git checkout <base_commit> && git apply --check patches/task_00N.test.patch
+# Then verify empirically that fail_to_pass genuinely fails before the real
+# fix and genuinely passes after it (both without touching the agent's
+# working copy) -- see the comments in task_001.yaml/task_002.yaml for what
+# that verification looked like. If your fail_to_pass tests already exist
+# unmodified at base_commit (rare for a bug-fix task, more common for a
+# "restore old behavior" task), omit test_patch entirely.
+
+id: task_006
+
+repository: pydantic-ai   # must be a key in REPOSITORIES in benchmark/dataset.py
+
+base_commit: "PUT_A_REAL_COMMIT_SHA_HERE"
+# gold fix commit (do not expose to the agent): PUT_THE_REAL_FIX_COMMIT_SHA_HERE
+# source PR: https://github.com/pydantic/pydantic-ai/pull/NNNN
+
+title: "Short, specific summary of the bug"
+
+description: |
+  What's broken, why, and what "fixed" means. Describe the bug and desired
+  behavior in enough detail that a competent engineer unfamiliar with the
+  repo could reproduce and fix it -- but do not describe the exact fix or
+  quote the fix diff here. This text becomes the agent's prompt verbatim.
+
+category: bug_fix       # bug_fix | feature | refactor | ...
+difficulty: easy         # easy | medium | hard
+
+setup:
+  command: |
+    pip install -e ./pydantic_graph -e "./pydantic_ai_slim" \
+      pytest anyio inline-snapshot dirty-equals httpx asgi-lifespan \
+      pytest-mock pytest-recording devtools "pyparsing<3.1"
+  env:
+    BLOCKBUSTER_ENABLED: "false"
+
+test_patch: patches/task_006.test.patch   # omit this line if not needed -- see note above
+
+tests:
+  fail_to_pass:
+    - "tests/path/to_test.py::test_the_new_regression_test"
+  pass_to_pass:
+    - "tests/path/to_test.py"   # usually: the whole file the fix lives in
+
+timeout_seconds: 900

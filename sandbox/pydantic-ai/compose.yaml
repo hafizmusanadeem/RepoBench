@@ -1,0 +1,16 @@
+services:
+  default:
+    build:
+      context: ../../repos/pydantic-ai
+    init: true
+    command: tail -f /dev/null
+    cpus: 2.0
+    mem_limit: 4gb
+    # No network at runtime: every dependency a current task needs is baked
+    # into the image at build time (see Dockerfile). This is what makes
+    # rule 7/8 in agents/system_prompt.txt actually enforceable rather than
+    # just a request the agent could ignore -- it isn't a request, the
+    # container has no route to the internet. If you deliberately want a
+    # task to have network access, override this at the Sample level rather
+    # than removing it here.
+    network_mode: none
