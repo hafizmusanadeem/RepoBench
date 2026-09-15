@@ -31,7 +31,7 @@ from benchmark.scorer import repo_test_scorer  # noqa: E402
 
 @task
 def repobench(
-    tasks_dir: str = "benchmark/tasks",
+    tasks_dir: str = str(_PROJECT_ROOT / "benchmark" / "tasks"),
     attempts: int = 1,
     command_timeout: int = 300,
     message_limit: int = 120,
