@@ -219,3 +219,5 @@ __marimo__/
 
 .claude/
 
+repos/*
+!repos/README.md
