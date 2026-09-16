@@ -2,6 +2,7 @@ services:
   default:
     build:
       context: ../../repos/pydantic-ai
+      dockerfile: ../../sandbox/pydantic-ai/Dockerfile
     init: true
     command: tail -f /dev/null
     cpus: 2.0
