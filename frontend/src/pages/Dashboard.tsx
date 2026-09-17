@@ -1,18 +1,38 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/ui/Card";
 import { ResultBadge } from "../components/ui/Badge";
 import { EmptyState } from "../components/ui/EmptyState";
-import { getDashboardMetrics, runs } from "../lib/mockData";
-
-const metrics = getDashboardMetrics();
-const recentRuns = [
-  runs.find((run) => run.id === "41"),
-  runs.find((run) => run.id === "40"),
-  runs.find((run) => run.id === "42"),
-].filter((run) => run !== undefined);
+import { getDashboardMetrics, listRuns, type DashboardMetrics, type RunSummary } from "../lib/api";
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [metricsData, runsData] = await Promise.all([getDashboardMetrics(), listRuns()]);
+        if (cancelled) return;
+        setMetrics(metricsData);
+        setRecentRuns(runsData.slice(0, 3));
+        setError(null);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load dashboard data.");
+        }
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -23,11 +43,23 @@ export function Dashboard() {
         </p>
       </header>
 
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-md border border-fail/30 bg-fail/10 px-4 py-3 text-sm text-fail"
+        >
+          Couldn't reach the backend: {error}
+        </div>
+      ) : null}
+
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Total Runs" value={String(metrics.total)} />
-        <MetricCard label="Passed" value={String(metrics.passed)} tone="pass" />
-        <MetricCard label="Failed" value={String(metrics.failed)} tone="fail" />
-        <MetricCard label="Success Rate" value={`${metrics.successRate}%`} />
+        <MetricCard label="Total Runs" value={metrics ? String(metrics.total) : "—"} />
+        <MetricCard label="Passed" value={metrics ? String(metrics.passed) : "—"} tone="pass" />
+        <MetricCard label="Failed" value={metrics ? String(metrics.failed) : "—"} tone="fail" />
+        <MetricCard label="Success Rate" value={metrics ? `${metrics.successRate}%` : "—"} />
+        {metrics && metrics.running > 0 ? (
+          <MetricCard label="Running" value={String(metrics.running)} />
+        ) : null}
       </section>
 
       <section>
@@ -64,16 +96,16 @@ export function Dashboard() {
                         }
                       }}
                     >
-                      <td className="px-4 py-2.5 font-mono text-[13px]">{run.task}</td>
+                      <td className="px-4 py-2.5 font-mono text-[13px]">{run.taskId}</td>
                       <td className="px-4 py-2.5">{run.agent}</td>
                       <td className="px-4 py-2.5">
-                        <ResultBadge result={run.result} />
+                        <ResultBadge result={run.result} status={run.status} />
                       </td>
                       <td className="px-4 py-2.5 font-mono text-[13px] text-muted">
-                        {run.toolCallCount}
+                        {run.toolCallCount ?? "—"}
                       </td>
                       <td className="px-4 py-2.5 font-mono text-[13px] text-muted">
-                        {run.duration}
+                        {run.duration ?? "—"}
                       </td>
                     </tr>
                   ))}

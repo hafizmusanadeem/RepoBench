@@ -1,25 +1,61 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../components/ui/Card";
 import { ResultBadge } from "../components/ui/Badge";
 import { Select } from "../components/ui/Select";
 import { EmptyState } from "../components/ui/EmptyState";
-import { AGENTS, TASKS, runs } from "../lib/mockData";
+import { listAgents, listRuns, listTasks, type RunSummary, type TaskSummary } from "../lib/api";
 
 export function Runs() {
   const navigate = useNavigate();
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [agents, setAgents] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [task, setTask] = useState("all");
   const [agent, setAgent] = useState("all");
   const [result, setResult] = useState("all");
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const [runsData, tasksData, agentsData] = await Promise.all([
+          listRuns(),
+          listTasks(),
+          listAgents(),
+        ]);
+        if (cancelled) return;
+        setRuns(runsData);
+        setTasks(tasksData);
+        setAgents(agentsData);
+        setError(null);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load runs.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const filtered = useMemo(() => {
     return runs.filter((run) => {
-      if (task !== "all" && run.task !== task) return false;
+      if (task !== "all" && run.taskId !== task) return false;
       if (agent !== "all" && run.agent !== agent) return false;
       if (result !== "all" && run.result !== result) return false;
       return true;
     });
-  }, [task, agent, result]);
+  }, [runs, task, agent, result]);
 
   return (
     <div className="space-y-6">
@@ -30,18 +66,27 @@ export function Runs() {
         </p>
       </header>
 
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-md border border-fail/30 bg-fail/10 px-4 py-3 text-sm text-fail"
+        >
+          Couldn't reach the backend: {error}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-3">
         <Select label="Task" value={task} onChange={(event) => setTask(event.target.value)}>
           <option value="all">All</option>
-          {TASKS.map((item) => (
-            <option key={item} value={item}>
-              {item}
+          {tasks.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.id}
             </option>
           ))}
         </Select>
         <Select label="Agent" value={agent} onChange={(event) => setAgent(event.target.value)}>
           <option value="all">All</option>
-          {AGENTS.map((item) => (
+          {agents.map((item) => (
             <option key={item} value={item}>
               {item}
             </option>
@@ -58,7 +103,7 @@ export function Runs() {
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {!loading && filtered.length === 0 ? (
         <EmptyState
           title="No runs match these filters"
           detail="Clear a filter to see more evaluation history."
@@ -91,19 +136,19 @@ export function Runs() {
                       }
                     }}
                   >
-                    <td className="px-4 py-2.5 font-mono text-[13px]">{run.task}</td>
+                    <td className="px-4 py-2.5 font-mono text-[13px]">{run.taskId}</td>
                     <td className="px-4 py-2.5">{run.agent}</td>
                     <td className="px-4 py-2.5">
-                        <ResultBadge result={run.result} />
+                      <ResultBadge result={run.result} status={run.status} />
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[13px] text-muted">
-                      {run.toolCallCount}
+                      {run.toolCallCount ?? "—"}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[13px] text-muted">
-                      {run.duration}
+                      {run.duration ?? "—"}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-[13px] text-muted">
-                      {run.date}
+                      {new Date(run.createdAt).toLocaleString()}
                     </td>
                   </tr>
                 ))}

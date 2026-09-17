@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import type { RunResult, ToolStatus } from "../../lib/mockData";
+import type { RunResult, RunStatus, ToolStatus } from "../../lib/api";
 
 type BadgeProps = {
   children: ReactNode;
@@ -24,7 +24,21 @@ export function Badge({ children, tone = "neutral", className }: BadgeProps) {
   );
 }
 
-export function ResultBadge({ result }: { result: RunResult }) {
+export function ResultBadge({
+  result,
+  status,
+}: {
+  result: RunResult | null;
+  /** Pass the run's status so an in-progress or errored run renders as
+   * "RUNNING…" / "ERROR" instead of a misleading blank PASS/FAIL badge. */
+  status?: RunStatus;
+}) {
+  if (status === "running") {
+    return <Badge tone="neutral">RUNNING…</Badge>;
+  }
+  if (status === "error" || result === null) {
+    return <Badge tone="fail">ERROR</Badge>;
+  }
   return <Badge tone={result === "PASS" ? "pass" : "fail"}>{result}</Badge>;
 }
 
