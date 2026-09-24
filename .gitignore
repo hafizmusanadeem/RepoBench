@@ -221,3 +221,5 @@ __marimo__/
 
 repos/*
 !repos/README.md
+.idea/
+backend/data/
