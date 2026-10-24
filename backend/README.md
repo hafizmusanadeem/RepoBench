@@ -1,78 +1,39 @@
 # RepoBench API
 
-A thin FastAPI layer over the existing evaluation code (`agents/`,
-`benchmark/`, `evals/`). It doesn't reimplement any evaluation logic — it
-lists the tasks already defined in `benchmark/tasks/*.yaml`, launches real
-`evals.repobench.repobench` runs through `inspect_ai.eval_async`, and turns
-the resulting `EvalLog` into the JSON the frontend renders.
+Evaluate coding agents on **any git repository** and get a recommendation for which one fits it best.
 
-## Running it
-
-From the project root, with the project's own dependencies installed
-(`uv sync` or `pip install -e .`) plus this API's two extra deps:
-
+## Run
 ```bash
-pip install fastapi "uvicorn[standard]"
+uv sync                      # or pip install -e .
 uv run uvicorn backend.main:app --reload --port 8000
+cd frontend && npm i recharts && npm run dev
 ```
+Needs Docker, git, and credentials for each model you enable (e.g. `ANTHROPIC_API_KEY`).
 
-Whatever running a task from the CLI already requires, running it from here
-requires too: Docker for the per-repository sandbox, the repository cloned
-under `repos/<name>` (see `repos/README.md`), and credentials for whichever
-model you pick in the "Agent" dropdown (e.g. `ANTHROPIC_API_KEY` for
-`anthropic/claude-sonnet-4-6`). If any of that's missing, a run finishes
-with `status: "error"` and a message explaining why — it won't crash the
-server or hang.
+## Flow
+1. `POST /api/repos` clones the repo (full history), detects language/install/test commands (`profiler.py`), writes a Dockerfile + compose.yaml under `backend/data/sandboxes/<id>/`.
+2. You edit the detected commands in the UI.
+3. `POST /api/evaluations` builds the image once (network on), then runs every agent x repeat as its own `python -m backend.worker <run_id>` process (sandbox network off), `REPOBENCH_MAX_PARALLEL_RUNS` at a time.
+4. Each run records the agent's diff, tokens, cost, regressions and transcript.
+5. `GET /api/evaluations/{id}/recommendation` ranks agents (Wilson lower bound on pass rate, blended with median cost/time using the weights you set).
 
-## Connecting the frontend
-
-In dev, `frontend/vite.config.ts` proxies `/api/*` to `http://localhost:8000`
-automatically — just run both:
-
+## Agents
 ```bash
-uv run uvicorn backend.main:app --reload --port 8000   # terminal 1
-cd frontend && npm run dev                              # terminal 2
+REPOBENCH_MODELS=anthropic/claude-sonnet-4-6
+REPOBENCH_CLI_AGENTS=claude_code:anthropic/claude-sonnet-4-6,codex:openai/gpt-5-codex,gemini:google/gemini-2.5-pro
+pip install inspect-swe      # needed for the CLI agents
 ```
+Other env vars: `REPOBENCH_PRICES` (cost table, check the defaults), `REPOBENCH_JUDGE_MODEL`, `REPOBENCH_RUN_TIME_LIMIT`, `REPOBENCH_MAX_PARALLEL_RUNS`, `REPOBENCH_CORS_ORIGINS`.
 
-For a build that talks to a backend hosted somewhere else, set
-`VITE_API_BASE_URL` (see `frontend/.env.example`).
-
-## Endpoints
-
-| Method | Path                     | Purpose                                          |
-| ------ | ------------------------ | ------------------------------------------------- |
-| GET    | `/api/tasks`              | Tasks from `benchmark/tasks/*.yaml`               |
-| GET    | `/api/agents`              | Models offered in the "Agent" dropdown            |
-| GET    | `/api/runs`                | Run history, newest first                         |
-| GET    | `/api/runs/{run_id}`       | One run, including its tool-call transcript        |
-| POST   | `/api/runs`                | Start a run: `{taskId, agent, maxToolCalls}`       |
-| GET    | `/api/dashboard/metrics`   | Totals/pass/fail/running for the dashboard cards   |
-
-## Configuration
-
-Both are optional environment variables:
-
-- `REPOBENCH_MODELS` — comma-separated inspect_ai model strings for the
-  "Agent" dropdown. Defaults to `anthropic/claude-sonnet-4-6`.
-- `REPOBENCH_CORS_ORIGINS` — comma-separated allowed origins. Defaults to
-  `http://localhost:5173` (Vite's default dev port).
+## Grading user tasks
+- Bug kinds: the verify command must pass, and existing test files must not be edited or deleted.
+- All kinds: the repo's test command must not regress against a baseline run captured before the agent starts (pre-existing failures are not blamed on the agent).
+- Features: optional LLM review of the diff.
 
 ## Storage
+`backend/data/repobench.db` (SQLite, WAL). The old `runs.json` is not migrated.
 
-Run history lives in `backend/data/runs.json`, a flat JSON file (see
-`backend/store.py`) — enough to survive a backend restart without adding a
-database dependency. `backend/data/` is gitignored. Swap `store.py` for a
-real database later without touching any callers (`main.py`/`runner.py`
-only use `list_runs` / `get_run` / `create_run` / `update_run`).
-
-Each completed run's full transcript is cached directly on its record when
-the evaluation finishes, so reading a run back doesn't need to re-parse
-inspect_ai's own `.eval` log files (also written, to `backend/data/logs/`,
-in case you want to open a run in `inspect view` separately).
-
-## A note on tool names
-
-The transcript shows the agent's real tools — `bash`, `text_editor`,
-`think`, and the `react()` agent's own submit tool (see
-`agents/coding_agent.py`) — not placeholder names. `RunDetails.tsx` renders
-each of these argument shapes directly.
+## Known limits
+- No live transcript: it is saved when a run finishes.
+- Test-failure comparison parses pytest / go / cargo / jest-style output; other runners fall back to "any failure after a clean baseline is a regression".
+- Repos needing services (databases, network) at test time won't work in the offline sandbox.

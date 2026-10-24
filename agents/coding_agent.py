@@ -1,20 +1,11 @@
-"""The RepoBench coding agent: a ReAct loop (reason -> act -> observe ->
-repeat) over a real repository checked out in a Docker sandbox.
+"""The RepoBench coding agents.
 
-Built on inspect_ai's react() agent (see
-https://inspect.aisi.org.uk/react-agent.html) rather than a hand-rolled
-loop, so we get the tool-call loop, submit-tool handling, and message-limit
-handling for free. The agent's own iteration -- edit, run pytest, read the
-failure, edit again -- happens naturally through repeated bash() calls; no
-special-casing is needed for that, it's just what a ReAct agent with a
-shell does.
-
-`attempts` is intentionally 1 by default: inspect_ai's react(attempts=N)
-re-invokes the task scorer on each submission and tells the model whether
-it was correct, which would hand the agent feedback derived from the hidden
-regression test across retries. Keeping attempts=1 means the agent only
-ever sees test output it generated itself (the existing/pass_to_pass
-suite), consistent with system_prompt.txt rule 7.
+repo_coding_agent: your original ReAct loop (unchanged) -- now the BASELINE.
+build_agent(kind): returns that baseline, or a real coding-agent CLI running in
+the sandbox via the `inspect_swe` package (pip install inspect-swe). CLI agents
+get their model from eval(model=...) in backend/worker.py, so no model argument
+is passed here. Check inspect_swe's docs for options (e.g. attempts, system
+prompt) supported by the version you install.
 """
 
 from __future__ import annotations
@@ -41,15 +32,8 @@ def _load_system_prompt() -> str:
 
 @agent
 def repo_coding_agent(attempts: int = 1, command_timeout: int = 300) -> Agent:
-    """A ReAct agent that fixes a described bug in a sandboxed repo checkout.
-
-    Args:
-        attempts: Number of graded submission attempts. Defaults to 1 -- see
-            module docstring for why this matters for this benchmark.
-        command_timeout: Per-call timeout (seconds) for bash and text_editor
-            tool invocations, so a hung command (e.g. an accidentally
-            interactive process) can't stall a sample forever.
-    """
+    """ReAct agent that fixes a described bug in a sandboxed repo checkout.
+    attempts stays 1 so the agent never sees hidden-test feedback."""
     return react(
         name="repo_coding_agent",
         description=(
@@ -64,3 +48,20 @@ def repo_coding_agent(attempts: int = 1, command_timeout: int = 300) -> Agent:
         ],
         attempts=attempts,
     )
+
+
+def build_agent(kind: str, attempts: int = 1, command_timeout: int = 300) -> Agent:
+    if kind == "react":
+        return repo_coding_agent(attempts=attempts, command_timeout=command_timeout)
+    try:
+        import inspect_swe
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError(f"Agent kind {kind!r} needs `pip install inspect-swe`.") from exc
+    factories = {
+        "claude_code": "claude_code",
+        "codex": "codex_cli",
+        "gemini": "gemini_cli",
+    }
+    if kind not in factories:
+        raise ValueError(f"Unknown agent kind {kind!r}")
+    return getattr(inspect_swe, factories[kind])()

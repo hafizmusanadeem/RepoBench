@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Check, X } from "lucide-react";
 import { Card } from "../components/ui/Card";
+import { DiffView } from "../components/ui/DiffView";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ResultBadge, StatusBadge } from "../components/ui/Badge";
 import { cn } from "../lib/utils";
@@ -27,9 +28,8 @@ export function RunDetails() {
         setRun(data);
         setSelectedId((current) => current ?? data.transcript[0]?.id);
         setError(null);
-        // Still running: keep polling so the transcript fills in live and
-        // the badge flips to PASS/FAIL/ERROR without a manual refresh.
-        if (data.status === "running") {
+        // The transcript and patch are saved when the run finishes.
+        if (data.status === "running" || data.status === "queued") {
           timer = setTimeout(load, POLL_INTERVAL_MS);
         }
       } catch (err) {
@@ -69,6 +69,8 @@ export function RunDetails() {
     );
   }
 
+  const inProgress = run.status === "running" || run.status === "queued";
+
   return (
     <div className="space-y-6">
       <div>
@@ -82,13 +84,35 @@ export function RunDetails() {
         ) : null}
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-sm md:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-3 rounded-lg border border-line bg-panel px-4 py-3 text-sm md:grid-cols-4 lg:grid-cols-8">
         <Meta label="Task" value={run.taskId} mono />
         <Meta label="Agent" value={run.agent} />
+        <Meta
+          label="Baseline"
+          value={run.baselineTestsOk == null && run.baselineVerifyOk == null
+            ? "—"
+            : [
+                run.baselineTestsOk == null ? null : `tests ${run.baselineTestsOk ? "passed" : "had failures"}`,
+                run.baselineVerifyOk == null ? null : `verify ${run.baselineVerifyOk ? "passed" : "failed"}`,
+              ].filter(Boolean).join(" · ")}
+          mono
+        />
         <Meta label="Duration" value={run.duration ?? "—"} mono />
         <Meta
           label="Tool Calls"
           value={run.toolCallCount != null ? String(run.toolCallCount) : "—"}
+          mono
+        />
+        <Meta label="Cost" value={run.costUsd != null ? `$${run.costUsd.toFixed(2)}` : "—"} mono />
+        <Meta label="Tokens" value={run.tokens != null ? run.tokens.toLocaleString() : "—"} mono />
+        <Meta
+          label="Changes"
+          value={run.filesChanged != null ? `${run.filesChanged} files +${run.additions ?? 0} −${run.deletions ?? 0}` : "—"}
+          mono
+        />
+        <Meta
+          label="Failed tool calls"
+          value={run.failedToolCalls != null ? String(run.failedToolCalls) : "—"}
           mono
         />
       </dl>
@@ -101,10 +125,10 @@ export function RunDetails() {
           {run.transcript.length === 0 ? (
             <div className="p-4">
               <EmptyState
-                title={run.status === "running" ? "Run in progress" : "No tool calls recorded"}
+                title={inProgress ? "Run in progress" : "No tool calls recorded"}
                 detail={
-                  run.status === "running"
-                    ? "The agent is still working. This page refreshes automatically."
+                  inProgress
+                    ? "The transcript appears when the run finishes. This page refreshes automatically."
                     : "This run didn't produce any tool calls."
                 }
               />
@@ -126,7 +150,9 @@ export function RunDetails() {
                       <span className="w-6 font-mono text-xs text-muted">
                         {String(item.step).padStart(2, "0")}
                       </span>
-                      <span className="flex-1 font-mono text-[13px]">{item.tool}</span>
+                      <span className={cn("flex-1 font-mono text-[13px]", item.tool === "assistant_message" && "text-muted")}>
+                        {item.tool === "assistant_message" ? "assistant" : item.tool}
+                      </span>
                       {item.status === "Success" ? (
                         <Check className="h-4 w-4 text-pass" aria-label="Success" />
                       ) : (
@@ -156,6 +182,11 @@ export function RunDetails() {
           )}
         </Card>
       </div>
+
+      <Card className="overflow-hidden">
+        <h2 className="border-b border-line px-4 py-3 text-sm font-medium">Agent's changes</h2>
+        <DiffView patch={run.patch} />
+      </Card>
     </div>
   );
 }
@@ -190,17 +221,20 @@ function Meta({
 }
 
 function ToolCallDetails({ call }: { call: ToolCall }) {
+  const isMessage = call.tool === "assistant_message";
   return (
     <div className="space-y-5 p-4">
-      <Detail label="Tool" value={call.tool} mono />
+      <Detail label="Tool" value={isMessage ? "assistant message" : call.tool} mono />
+
+      {isMessage ? null : (
+        <div>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-muted">Arguments</p>
+          <ArgumentsView call={call} />
+        </div>
+      )}
 
       <div>
-        <p className="mb-1.5 text-xs uppercase tracking-wide text-muted">Arguments</p>
-        <ArgumentsView call={call} />
-      </div>
-
-      <div>
-        <p className="mb-1.5 text-xs uppercase tracking-wide text-muted">Output</p>
+        <p className="mb-1.5 text-xs uppercase tracking-wide text-muted">{isMessage ? "Message" : "Output"}</p>
         <pre className="overflow-x-auto rounded-md border border-line bg-canvas p-3 font-mono text-[12px] leading-5 text-fg">
           {call.error ?? call.output ?? "—"}
         </pre>
@@ -221,6 +255,10 @@ function ToolCallDetails({ call }: { call: ToolCall }) {
 // still falls back to pretty-printed JSON below.
 function ArgumentsView({ call }: { call: ToolCall }) {
   const args = call.arguments;
+
+  if (call.tool === "assistant_message") {
+    return <p className="text-sm text-muted">The model's message is shown under Output.</p>;
+  }
 
   if (call.tool === "bash" && typeof args.command === "string") {
     return (

@@ -1,10 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { FlaskConical, LayoutDashboard, List, Plus } from "lucide-react";
+import { FlaskConical, GitCompare, LayoutDashboard, List, Plus } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/new", label: "New Run", icon: Plus, end: false },
+  { to: "/new", label: "New evaluation", icon: Plus, end: false },
+  { to: "/evaluations", label: "Evaluations", icon: GitCompare, end: false },
   { to: "/runs", label: "Runs", icon: List, end: false },
 ] as const;
 

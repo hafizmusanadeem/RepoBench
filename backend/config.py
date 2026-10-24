@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -8,29 +9,38 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "backend" / "data"
 EVAL_LOG_DIR = DATA_DIR / "logs"
-RUNS_STORE_PATH = DATA_DIR / "runs.json"
+SANDBOX_DIR = DATA_DIR / "sandboxes"   # generated Dockerfile + compose.yaml per repo
+DB_PATH = DATA_DIR / "repobench.db"
+REPOS_DIR = PROJECT_ROOT / "repos"     # cloned repositories (gitignored)
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-EVAL_LOG_DIR.mkdir(parents=True, exist_ok=True)
+for _d in (DATA_DIR, EVAL_LOG_DIR, SANDBOX_DIR, REPOS_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
 
-# The models offered in the "Agent" dropdown. There is only one agent
-# scaffold (agents/coding_agent.py's ReAct loop) -- what actually varies
-# between "agents" in the UI is which model drives it, so this is a list of
-# inspect_ai model strings (provider/model), e.g. "anthropic/claude-sonnet-4-6".
-# Override with a comma-separated REPOBENCH_MODELS env var.
-_DEFAULT_MODELS = ["anthropic/claude-sonnet-4-6"]
+# How many agent runs execute at the same time (each is its own Docker sandbox
+# plus its own worker process).
+MAX_PARALLEL_RUNS = int(os.environ.get("REPOBENCH_MAX_PARALLEL_RUNS", "2"))
+
+# Wall-clock limit for one agent run, in seconds.
+RUN_TIME_LIMIT = int(os.environ.get("REPOBENCH_RUN_TIME_LIMIT", "1800"))
+
+# USD per 1M tokens as (input, output), matched by substring against the model
+# string inspect_ai reports. CHECK THESE against your provider's pricing page
+# before trusting any cost number; override with REPOBENCH_PRICES, e.g.
+#   REPOBENCH_PRICES='{"gpt-5": [1.25, 10.0]}'
+_DEFAULT_PRICES: dict[str, tuple[float, float]] = {
+    "claude-sonnet-4": (3.0, 15.0),
+}
 
 
-def available_models() -> list[str]:
-    raw = os.environ.get("REPOBENCH_MODELS")
-    if not raw:
-        return list(_DEFAULT_MODELS)
-    models = [m.strip() for m in raw.split(",") if m.strip()]
-    return models or list(_DEFAULT_MODELS)
+def model_prices() -> dict[str, tuple[float, float]]:
+    prices = dict(_DEFAULT_PRICES)
+    raw = os.environ.get("REPOBENCH_PRICES")
+    if raw:
+        for key, value in json.loads(raw).items():
+            prices[key] = (float(value[0]), float(value[1]))
+    return prices
 
 
 def cors_origins() -> list[str]:
-    # The Vite dev server's default origin. Override (comma-separated) with
-    # REPOBENCH_CORS_ORIGINS once the frontend is deployed somewhere else.
     raw = os.environ.get("REPOBENCH_CORS_ORIGINS", "http://localhost:5173")
     return [o.strip() for o in raw.split(",") if o.strip()]

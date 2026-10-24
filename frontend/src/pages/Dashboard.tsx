@@ -19,7 +19,7 @@ export function Dashboard() {
         const [metricsData, runsData] = await Promise.all([getDashboardMetrics(), listRuns()]);
         if (cancelled) return;
         setMetrics(metricsData);
-        setRecentRuns(runsData.slice(0, 3));
+        setRecentRuns(runsData.slice(0, 5));
         setError(null);
       } catch (err) {
         if (!cancelled) {
@@ -61,6 +61,36 @@ export function Dashboard() {
           <MetricCard label="Running" value={String(metrics.running)} />
         ) : null}
       </section>
+
+      {metrics && metrics.byAgent.length > 0 ? (
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-fg">By agent</h2>
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-line bg-raised/60 text-xs text-muted">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">Agent</th>
+                    <th className="px-4 py-2.5 font-medium">Passed</th>
+                    <th className="px-4 py-2.5 font-medium">Failed</th>
+                    <th className="px-4 py-2.5 font-medium">Errors</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metrics.byAgent.map((a) => (
+                    <tr key={a.agent} className="border-b border-line last:border-0">
+                      <td className="px-4 py-2.5">{a.agent}</td>
+                      <td className="px-4 py-2.5 font-mono text-[13px] text-pass">{a.passed}</td>
+                      <td className="px-4 py-2.5 font-mono text-[13px] text-fail">{a.failed}</td>
+                      <td className="px-4 py-2.5 font-mono text-[13px] text-muted">{a.errored}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </section>
+      ) : null}
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-fg">Recent Runs</h2>
